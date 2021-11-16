@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+	  <meta charset="UTF-8">
+    <title>SVI v0.1</title>
+
+    <meta charset="UTF-8">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.5.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.5.1/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.min.js"></script>
+<link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.css" type="text/css">
+<script type="text/javascript" src="js/d3.js"></script>
+<script type="text/javascript" src="js/queue.v1.min.js"></script>
+    <style>
+		body{
+			font-family:helvetica;
+			font-weight:100;
+		}
+		#header{
+			padding:10px;
+			width:250px;
+			height:100vh;
+			border-right:1px solid black;
+			position:fixed;
+			top:0px;
+			left:0px;
+		}
+        #title{
+          font-size:24px;
+			font-weight:100;
+			padding-bottom:0px;
+			padding-left:10px;
+  		  line-height:130%;
+        }
+		#info{
+			padding:10px;
+			font-size:11px;
+		}
+		#map{
+			position:fixed;
+			top:0px;
+			border:1px solid black;
+			height:100vh;
+			width:100%;
+			margin-left:250px;
+			padding:20px;
+		}
+		#geocoder{
+			font-size:11px;
+		}
+</style>
+
+</head>
+
+<body>
+
+
+<div id="header">
+	<div id="title" class="menu">
+       Social <br>Vulnerability <br>Index<br>
+	   <strong>Match </strong>
+		</div>
+		
+		<div id="info">
+		The Social Vulnerability Index is a composite of 15 Census variables that are used to allocate resources in cases of emergency like natural disasters and pandemics.
+		Each part of the U.S has a different composition. 
+		<br><br>To start exploring the SVI, click on a location or enter an address.
+		<br>
+		<!-- https://www.atsdr.cdc.gov/placeandhealth/project_snapshots/svitool_covid.html#anchor_1630441001564 -->
+	</div>
+	<div id="currentSelection">current</div>
+ <div id="geocoder">Look up an address</div>
+</div>
+ 	<div id="map">map</div>
+
+<script>
+var measures = ["POV","PCI","UNEMP","NOHSDP","AGE17","AGE65","DISABL","SNGPNT", "LIMENG","MINRTY","CROWD","GROUPQ","MOBILE", "MUNIT","NOVEH"]
+	var themeDisplayTextShort = {
+	    "POV":"below poverty",
+	    "PCI":"Per capita income",
+	    "UNEMP":"unemployment",
+	    "NOHSDP":"no high school diploma",
+
+	    "AGE17":"under 18",
+	    "AGE65":"over 64",
+	    "DISABL":"disability",
+	    "SNGPNT":"single parent households",
+
+
+	    "LIMENG":"limited english",
+	    "MINRTY":"minorities",
+
+	    "CROWD":"more people than rooms",
+	    "GROUPQ":"group quarters",
+	    "MOBILE":"mobile homes",
+	    "MUNIT":"structures with 10+ units",
+	    "NOVEH":"no vehicle available"
+
+	}	
+	
+	var sviData = d3.csv("SVI2018_US.csv")
+	var byFips
+	var sviList
+	Promise.all([sviData])
+	.then(function(data){
+		byFips = fipsDictionary(data[0])
+		sviList = data[0]
+		drawMap(byFips)
+	})
+	function fipsDictionary(data){
+		var formatted = {}
+		for( var i in data){
+			var fips = data[i].FIPS
+			if(fips!=undefined){			
+				if(fips.length==10){
+					fips = "0"+fips
+				}
+				formatted[fips]=data[i]
+			}
+		}
+		return formatted
+	}
+	function drawMap(sviData){
+		mapboxgl.accessToken = "pk.eyJ1IjoiYzRzci1nc2FwcCIsImEiOiJja2J0ajRtNzMwOHBnMnNvNnM3Ymw5MnJzIn0.fsTNczOFZG8Ik3EtO9LdNQ";
+		const map = new mapboxgl.Map({
+			container: 'map', // container ID
+			style: "mapbox://styles/c4sr-gsapp/ckvfwjpx03lod14ro2170an28", // custom style url from https://studio.mapbox.com/
+			center: [-73.98658057469034,40.760111243359546], // starting position
+			zoom: 7, // starting zoom
+			maxZoom:11
+		});
+		const geocoder = new MapboxGeocoder({
+			accessToken: mapboxgl.accessToken,
+			mapboxgl: mapboxgl,
+				 countries: 'us'
+		
+		});
+		document.getElementById('geocoder').appendChild(geocoder.onAdd(map));
+	
+		//on result get tract
+		map.on("load",function(){
+			map.on("click","alltracts",function(c){
+				var coords = c.lngLat
+		 		var features = map.queryRenderedFeatures(map.project(coords), {layers:["alltracts"]})
+				var geoid = features[0].properties.GEOID
+				getMatches(sviData[geoid])
+				console.log(features)
+				
+			})
+	 		geocoder.on('result', function(result) {
+				// console.log("geo")
+				//console.log(result)
+			
+				d3.select("#currentSelection")
+					.html("<span class=\"highlight\">"
+						+result.result["place_name"]
+						+"</span><br>"+result.result.geometry.coordinates)
+			
+				map.on("move",function(){
+					
+				})
+			
+				map.on("moveend",function(){
+					
+		 			if(result!=null){
+						var center = result.result.center
+		 				var coords = result.result.geometry.coordinates
+		 				var features = map.queryRenderedFeatures(map.project(coords), {layers:["alltracts"]})
+							var geoid = features[0].properties.GEOID
+							//console.log(sviData[geoid])
+							getMatches(sviData[geoid])
+		 			}
+					
+					
+				})
+	 			
+
+	 		});
+		
+		
+		
+		})
+	}
+	
+	//get tract svi and 15 metrics
+	function getMatches(data){
+		var fips = data["FIPS"]
+		//density and popualtion
+		var pop = data["E_TOTPOP"]
+		var area = data["AREA_SQMI"]
+		var density = Math.round(pop/area)
+		console.log(density)
+		var result = sviList.filter(function(d){
+			// console.log(Math.round(d["E_TOTPOP"]/d["AREA_SQMI"]*100)/100)
+			return Math.round(d["E_TOTPOP"]/d["AREA_SQMI"])==density
+		})
+		console.log(result)
+		
+		for(var i in measures){
+			var key = "EP_"+measures[i]
+			var value = data[key]
+			if(value!=0){
+				var result = sviList.filter(function(d){
+					var thisDensity = Math.round(d["E_TOTPOP"]/d["AREA_SQMI"])
+					return d[key]<value*1.01  &&  d[key]>value*.99 && density==thisDensity && fips!=d["FIPS"]
+				})
+				console.log(key,value,result)
+			}
+		}
+		var themes = ["RPL_THEME1","RPL_THEME2","RPL_THEME3","RPL_THEME4","RPL_THEMES"]
+		for(var t in themes){
+			var key = themes[t]
+			var value =data[key]
+			//var result = sviList.filter(function(d){return d[key]==value})
+			var result = sviList.filter(function(d){
+		
+					var thisDensity = Math.round(data["E_TOTPOP"]/data["AREA_SQMI"])
+					return d[key]==value && density==thisDensity && fips!=d["FIPS"]
+			})
+			console.log(key,value,result.length)
+			
+		}
+	}
+	//get matches with really big rollovers fo reach like satelitte clipped
+	
+</script>
+
+
+
+
+
+</body>
+</html>
